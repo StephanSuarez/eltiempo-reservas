@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true">
+    <testsuites>
+        <testsuite name="reservas">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <!-- Base de test creada por db/test-db.sh: debe ser MYSQL_DATABASE + "_test".
+             Host, usuario y contraseña se toman del entorno del contenedor api. -->
+        <env name="DB_NAME" value="reservas_test" force="true"/>
+    </php>
+</phpunit>
