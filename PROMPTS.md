@@ -273,3 +273,54 @@ No modifiques PROMPTS.md. Al terminar, corre los tests y el script de concurrenc
 **Resultado breve:** de los hallazgos de la auditoría se aplicaron H1, H2, H4 y D3 en código y H5 en el README; H3 confirmó mantener el 503 sin reintento automático. H1 corrigió un error real de idempotencia (un reintento concurrente recibía 409 aunque la reserva existía). H2 bajó la espera por locks de 50 s a 5 s. Quedaron 8 tests en verde, y la IA comprobó que el test nuevo de H1 falla si se quita la corrección.
 
 **Mi revisión:** acepté los cambios que corrigen errores reales o evitan casos borde con impacto (locks colgados, borrado accidental de la base, respuestas incorrectas en reintentos) y rechacé los que no aportan en este contexto (H6, H7 y menores). El test de reintento con payload distinto se dividió porque D3 cambió ese comportamiento a propósito. Acepto el costo de H2: ante un bloqueo externo, las reservas fallan rápido con 503 en lugar de esperar, y reintentar es seguro gracias a la idempotencia.
+
+---
+
+## Prompt 6: Revisión de seguridad
+
+```text
+Revisa la seguridad de la solución completa buscando problemas de:
+1. inyección SQL;
+2. validación de entradas;
+3. exposición de información en errores;
+4. manejo de secretos y configuración;
+5. exposición de puertos y contenedores;
+6. abuso o denegación de servicio.
+7. otras vulnerabilidades que consideres pertinentes.
+
+Para cada hallazgo indica: qué es, un escenario concreto donde falla, severidad y la corrección que propones. No modifiques código todavía: voy a decidir qué recomendaciones acepto y cuáles rechazo.
+
+Restricción: No me entregues vulnerabilidades que supongas las vulneravilidades deben ser verificadas que si sean una vulnerabilidad, o si no, no lo son
+```
+
+**Resultado breve:** 5 vulnerabilidades verificadas; sin inyección SQL ni fuga de secretos. Solo V1 (JSON grande agota la RAM) y V2 (API abierta a la red) tenían impacto real.
+
+**Mi revisión:** acepté V1 (los cuerpos válidos miden menos de 1 KB) y V2 (proteger a quien lo ejecute en una red compartida). Rechacé V3–V5: fuera de alcance o no explotables por sí solas.
+
+### Decisiones de seguridad
+
+| #  | Recomendación de la IA | Decisión | Motivo |
+| -- | ---------------------- | -------- | ------ |
+| V1 | Limitar el cuerpo a 4096 bytes | Aceptada | Un JSON de 8 MB tumbaba el proceso y con 30 en paralelo el contenedor llegó a ~4 GB de RAM; la corrección es una línea |
+| V2 | Publicar la API solo en 127.0.0.1 | Aceptada (configurable) | Quien ejecute el repo en una red compartida no expone su API; queda configurable para probar desde otro equipo |
+| V3 | Autenticación | Rechazada | Fuera del alcance del enunciado |
+| V4 | Proteger contra conexiones lentas | Rechazada | Con la API en 127.0.0.1 no hay atacante de red; en producción iría detrás de un proxy |
+| V5 | Ocultar versiones de Apache y PHP | Rechazada | Por sí sola no es explotable |
+
+---
+
+## Prompt 7: Correcciones de seguridad
+
+```text
+Decisiones sobre la revisión de seguridad:
+
+- V1 aceptada: limita el cuerpo de las solicitudes a 4096 bytes en Apache.
+- V2 aceptada: publica la API solo en 127.0.0.1 por defecto, configurable desde .env (agrégalo a .env.example) para poder probar desde otro equipo de mi red.
+- V3, V4 y V5 rechazadas.
+
+Después de aplicarlas, repite los experimentos de V1 y V2 y verifica que quedaron corregidas. No modifiques PROMPTS.md. Al terminar, corre los tests y el script de concurrencia y muéstrame la salida.
+```
+
+**Resultado breve:** V1 y V2 aplicadas y verificadas repitiendo los experimentos: un cuerpo de 8 MB ahora recibe 413 y la RAM no pasa de 20 MiB; la API ya no responde por la IP de red (se abre con `API_HOST=0.0.0.0`). 8 tests y script de concurrencia en verde.
+
+**Mi revisión:** acepto el efecto secundario de V1: si el cuerpo supera el límite, la respuesta 413 sale con formato mixto (HTML + JSON), pero ningún cliente legítimo envía más de 1 KB. La IA también agregó la fila 413 al README sin pedírselo; la mantengo porque documenta el nuevo comportamiento.
