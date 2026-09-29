@@ -9,6 +9,7 @@ Se omiten las confirmaciones triviales ("sí", "continúa").
 
 ## Prompt 1: Análisis y plan (sin código)
 
+```text
 # OBJETIVO
 
 Quiero diseñar una API REST en PHP 8.2+ y MySQL 8+ para administrar reservas de inventario.
@@ -146,6 +147,7 @@ Antes de presentar el plan, dime en 3 líneas:
 1. Qué entendiste.
 2. Cuál identificas como el principal riesgo técnico.
 3. Qué NO vas a hacer en esta etapa.
+```
 
 **Resultado breve:** plan sin código: Apache prefork + PHP sin framework + PDO, UPDATE condicional atómico para el stock, UNIQUE(request_id) + manejo del error 1062 para idempotencia, CHECK en BD, tests de integración HTTP y script con curl_multi.
 
@@ -153,8 +155,9 @@ Antes de presentar el plan, dime en 3 líneas:
 
 ---
 
-## Prompt 2: Base de datos
+## Prompt 2: Aprobación del plan y decisiones técnicas
 
+```text
 Apruebo el plan. Puedes implementar siguiendo el orden de la sección 10, con estas decisiones:
 
 # DECISIONES
@@ -186,6 +189,7 @@ Deja una sección "Decisiones técnicas" vacía; la escribo yo.
 - No modifiques ni elimines PROMPTS.md.
 - Verifica en Docker Hub las etiquetas exactas de las imágenes antes de fijarlas.
 - Al terminar, ejecuta las pruebas y el script de concurrencia y muéstrame la salida.
+```
 
 **Resultado breve:** implementó el entorno (imágenes verificadas: php:8.5.11-apache-trixie, mysql:8.4.11, composer:2.10.3), el esquema, el endpoint y la transacción. Lo verificó a mano con curl: validaciones, idempotencia, stock 1 con dos requests en paralelo (1 confirmada, 1 rechazada, stock 0) y 50 requests contra stock 6 (6 confirmadas). Corrigió por su cuenta la collation de request_id a utf8mb4_0900_bin (utf8mb4_bin
 ignora espacios finales). Para D4 propuso dos opciones: A (vhost de test) o B (contenedor api-test).
@@ -215,10 +219,13 @@ Con esto, continúa con los tests, el script de concurrencia y el README.
 
 **Mi revisión:** la IA introdujo errores a propósito para comprobar que los tests los detectan. Al quitar el manejo del request_id duplicado, el test falla: la idempotencia la garantiza la base de datos (UNIQUE), no solo la búsqueda previa en PHP. Esto resuelve el pendiente del prompt 2.
 
-## Prompt 4: Auditoria
+---
+
+## Prompt 4: Auditoría
 
 Enviado con modo ultracode (revisión multiagente).
 
+```text
 Audita la solución completa buscando problemas de:
 1. concurrencia;
 2. transacciones;
@@ -228,6 +235,7 @@ Audita la solución completa buscando problemas de:
 Incluye el caso de deadlock sin reintento automático que dejamos pendiente.
 
 Para cada hallazgo indica: qué es, un escenario concreto donde falla, severidad y la corrección que propones. No modifiques código todavía: voy a decidir qué recomendaciones acepto y cuáles rechazo.
+```
 
 **Resultado breve:** la auditoría corrió experimentos reales y encontró 7 hallazgos y 3 menores. No hay sobreventa ni datos corruptos. El hallazgo principal (H1): un reintento concurrente con stock justo respondía 409 aunque la reserva existía.
 
@@ -248,10 +256,10 @@ Para cada hallazgo indica: qué es, un escenario concreto donde falla, severidad
 ---
 
 
-## Prompt 5: 
+## Prompt 5: Revisión crítica
 
 Decisiones sobre la auditoría. Implementa solo lo aceptado:
-
+```text
 - H1 aceptada: si el UPDATE afecta 0 filas, busca de nuevo el request_id y devuelve 200 si la reserva existe. Agrega el test concurrente con stock 1.
 - H2 aceptada: innodb_lock_wait_timeout = 5 en la conexión.
 - H3 aceptada: se mantiene 503 sin reintento automático.
@@ -261,3 +269,7 @@ Decisiones sobre la auditoría. Implementa solo lo aceptado:
 - H6, H7 y menores rechazados.
 
 No modifiques PROMPTS.md. Al terminar, corre los tests y el script de concurrencia y muéstrame la salida.
+```
+**Resultado breve:** de los hallazgos de la auditoría se aplicaron H1, H2, H4 y D3 en código y H5 en el README; H3 confirmó mantener el 503 sin reintento automático. H1 corrigió un error real de idempotencia (un reintento concurrente recibía 409 aunque la reserva existía). H2 bajó la espera por locks de 50 s a 5 s. Quedaron 8 tests en verde, y la IA comprobó que el test nuevo de H1 falla si se quita la corrección.
+
+**Mi revisión:** acepté los cambios que corrigen errores reales o evitan casos borde con impacto (locks colgados, borrado accidental de la base, respuestas incorrectas en reintentos) y rechacé los que no aportan en este contexto (H6, H7 y menores). El test de reintento con payload distinto se dividió porque D3 cambió ese comportamiento a propósito. Acepto el costo de H2: ante un bloqueo externo, las reservas fallan rápido con 503 en lugar de esperar, y reintentar es seguro gracias a la idempotencia.
