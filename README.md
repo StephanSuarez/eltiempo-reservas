@@ -7,7 +7,10 @@ API REST en PHP 8.5 y MySQL 8.4 para reservar stock de productos, idempotente po
 Requiere Docker con Docker Compose.
 
 ```sh
-cp .env.example .env      # completar MYSQL_ROOT_PASSWORD y MYSQL_PASSWORD
+cp .env.example .env
+# Obligatorio: MySQL no arranca con las contraseñas vacías.
+# Genera una para MYSQL_ROOT_PASSWORD y otra para MYSQL_PASSWORD, y pégalas en .env:
+openssl rand -hex 16
 docker compose up -d --build --wait
 ```
 
