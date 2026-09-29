@@ -69,6 +69,25 @@ final class Reservations
         return [201, ['reservation_id' => $reservationId, 'status' => 'confirmed', 'remaining_stock' => $remainingStock]];
     }
 
+    /** @return array{int, array<string, mixed>} [código HTTP, cuerpo de la respuesta] */
+    public function cancel(string $requestId): array
+    {
+        $reservation = $this->find($requestId);
+        if ($reservation === null) {
+            return [404, self::rejected('reservation_not_found', 'La reserva no existe.')];
+        }
+
+        // Devuelve al producto las unidades reservadas y elimina la reserva.
+        $this->pdo->prepare('UPDATE products SET stock = stock + ? WHERE id = ?')
+            ->execute([$reservation['quantity'], $reservation['product_id']]);
+        $this->pdo->prepare('DELETE FROM reservations WHERE id = ?')->execute([$reservation['id']]);
+
+        $select = $this->pdo->prepare('SELECT stock FROM products WHERE id = ?');
+        $select->execute([$reservation['product_id']]);
+
+        return [200, ['reservation_id' => $reservation['id'], 'status' => 'cancelled', 'remaining_stock' => $select->fetchColumn()]];
+    }
+
     private function find(string $requestId): ?array
     {
         $select = $this->pdo->prepare(

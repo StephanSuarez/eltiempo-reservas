@@ -20,7 +20,30 @@ function fail(int $status, string $error, string $message): never
     respond($status, ['error' => $error, 'message' => $message]);
 }
 
-if (parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) !== '/reservations') {
+$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+
+if (preg_match('#^/reservations/([^/]+)$#', $path, $matches) === 1) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'DELETE') {
+        header('Allow: DELETE');
+        fail(405, 'method_not_allowed', 'Método no permitido.');
+    }
+
+    $requestId = rawurldecode($matches[1]);
+    if (trim($requestId) === '' || mb_strlen($requestId) > 64) {
+        fail(422, 'invalid_request_id', 'request_id debe ser un texto no vacío de hasta 64 caracteres.');
+    }
+
+    try {
+        [$status, $body] = (new Reservations(Database::connect()))->cancel($requestId);
+    } catch (Throwable $e) {
+        error_log((string) $e);
+        fail(500, 'internal_error', 'Error interno.');
+    }
+
+    respond($status, $body);
+}
+
+if ($path !== '/reservations') {
     fail(404, 'not_found', 'Ruta no encontrada.');
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

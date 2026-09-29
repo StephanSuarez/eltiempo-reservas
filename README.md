@@ -53,6 +53,18 @@ Los errores responden `{"error": "<código>", "message": "..."}`:
 
 Ante un `500` o un `503`, reintentar con el mismo `request_id` y el mismo cuerpo: si la reserva llegó a confirmarse se devuelve con `200` y el stock no se descuenta dos veces; si no, se procesa como nueva.
 
+## Cancelar una reserva
+
+```sh
+curl -i -X DELETE http://localhost:8080/reservations/REQ-2026-0001
+```
+
+```json
+{"reservation_id": 1, "status": "cancelled", "remaining_stock": 10}
+```
+
+Devuelve las unidades al stock del producto y elimina la reserva. Responde `404` con `reservation_not_found` si el `request_id` no tiene una reserva.
+
 ## Pruebas
 
 ```sh

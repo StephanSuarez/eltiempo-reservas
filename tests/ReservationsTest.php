@@ -129,6 +129,41 @@ final class ReservationsTest extends TestCase
         self::assertSame(1, $this->reservationCount());
     }
 
+    public function testCancelReturnsStockAndDeletesReservation(): void
+    {
+        $productId = $this->product(stock: 10);
+        [, $created] = $this->reservations->create('REQ-1', $productId, 3);
+
+        [$status, $body] = $this->reservations->cancel('REQ-1');
+
+        self::assertSame(200, $status);
+        self::assertSame(['reservation_id' => $created['reservation_id'], 'status' => 'cancelled', 'remaining_stock' => 10], $body);
+        self::assertSame(10, $this->stock($productId));
+        self::assertSame(0, $this->reservationCount());
+    }
+
+    public function testCancelUnknownReservationIsNotFound(): void
+    {
+        [$status, $body] = $this->reservations->cancel('REQ-1');
+
+        self::assertSame(404, $status);
+        self::assertSame('reservation_not_found', $body['error']);
+    }
+
+    public function testConcurrentCancelsReturnStockOnce(): void
+    {
+        $productId = $this->product(stock: 10);
+        $this->reservations->create('REQ-1', $productId, 3);
+
+        $results = $this->runInParallel('cancel.php', array_fill(0, 5, ['REQ-1']));
+
+        $statuses = array_column($results, 0);
+        sort($statuses);
+        self::assertSame([200, 404, 404, 404, 404], $statuses);
+        self::assertSame(10, $this->stock($productId));
+        self::assertSame(0, $this->reservationCount());
+    }
+
     /**
      * Lanza un proceso PHP por solicitud, cada uno con su propia conexión, y los hace reservar en el mismo instante.
      *
@@ -137,10 +172,24 @@ final class ReservationsTest extends TestCase
      */
     private function reserveInParallel(array $requests): array
     {
+        return $this->runInParallel(
+            'reserve.php',
+            array_map(fn ($request) => [$request[0], (string) $request[1], (string) $request[2]], $requests),
+        );
+    }
+
+    /**
+     * Ejecuta el script de tests/ una vez por lista de argumentos, en procesos simultáneos.
+     *
+     * @param list<list<string>> $argumentLists
+     * @return list<array{int, array<string, mixed>}>
+     */
+    private function runInParallel(string $script, array $argumentLists): array
+    {
         $startAt = (string) (microtime(true) + 0.5);
         $processes = [];
-        foreach ($requests as [$requestId, $productId, $quantity]) {
-            $command = [PHP_BINARY, __DIR__ . '/reserve.php', $requestId, (string) $productId, (string) $quantity, $startAt];
+        foreach ($argumentLists as $arguments) {
+            $command = [PHP_BINARY, __DIR__ . '/' . $script, ...$arguments, $startAt];
             $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, getenv());
             $processes[] = [$process, $pipes];
         }
